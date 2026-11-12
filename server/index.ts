@@ -1,10 +1,13 @@
 import express, { type Response } from 'express';
 import { CodexClient } from './codex-client.js';
-import type { SectionListResult, ThreadListResult } from './types.js';
+import { StatusStore } from './status-store.js';
+import type { SectionListResult, ThreadListResult, WorkbenchStatus } from './types.js';
 
 const HOST = '127.0.0.1';
 const PORT = Number(process.env.WORKBENCH_PORT ?? 4100);
 const client = new CodexClient();
+const statusStore = new StatusStore();
+await statusStore.init();
 const app = express();
 const eventClients = new Set<Response>();
 
@@ -24,7 +27,8 @@ async function listThreads(): Promise<ThreadListResult> {
     sortKey: 'updated_at',
     sortDirection: 'desc'
   }));
-  const uniqueThreads = [...new Map(result.data.map(thread => [thread.id, thread])).values()];
+  const uniqueThreads = [...new Map(result.data.map(thread => [thread.id, thread])).values()]
+    .map(thread => ({ ...thread, workbenchStatus: statusStore.get(thread.id) }));
   return { ...result, data: uniqueThreads };
 }
 
@@ -57,6 +61,23 @@ app.get('/api/threads', async (request, response) => {
     response.json({ ...result, data });
   } catch (error) {
     response.status(502).json({ error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+app.put('/api/threads/:threadId/status', async (request, response) => {
+  const threadId = request.params.threadId?.trim();
+  const status = request.body?.status as unknown;
+  const validStatuses: WorkbenchStatus[] = ['todo', 'progress', 'done'];
+  if (!threadId || !(status === null || validStatuses.includes(status as WorkbenchStatus))) {
+    response.status(400).json({ error: 'Ungültiger Workbench-Status.' });
+    return;
+  }
+  try {
+    await statusStore.set(threadId, status as WorkbenchStatus | null);
+    publishUpdate('workbench/status-changed');
+    response.json({ threadId, status });
+  } catch (error) {
+    response.status(500).json({ error: error instanceof Error ? error.message : String(error) });
   }
 });
 

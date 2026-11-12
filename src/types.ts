@@ -3,6 +3,8 @@ export type Section = {
   name: string;
 };
 
+export type WorkbenchStatus = 'todo' | 'progress' | 'done';
+
 export type Thread = {
   id: string;
   name: string | null;
@@ -14,6 +16,7 @@ export type Thread = {
   recencyAt: number | null;
   status: unknown;
   section: Section | null;
+  workbenchStatus: WorkbenchStatus | null;
 };
 
 export type ThreadListResponse = {

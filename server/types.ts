@@ -15,7 +15,10 @@ export type CodexThread = {
   recencyAt: number | null;
   status: unknown;
   section: CodexSection | null;
+  workbenchStatus: WorkbenchStatus | null;
 };
+
+export type WorkbenchStatus = 'todo' | 'progress' | 'done';
 
 export type ThreadListResult = {
   data: CodexThread[];

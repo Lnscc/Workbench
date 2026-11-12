@@ -26,7 +26,11 @@ function findCodexBinary(): string {
   if (process.platform !== 'win32') return 'codex';
 
   try {
-    const result = execFileSync('where.exe', ['codex'], { encoding: 'utf8', windowsHide: true });
+    const result = execFileSync('where.exe', ['codex'], {
+      encoding: 'utf8',
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'ignore']
+    });
     const candidate = result
       .split(/\r?\n/)
       .map(line => line.trim())
@@ -45,10 +49,28 @@ function findCodexBinary(): string {
   try {
     const systemRoot = process.env.SystemRoot ?? 'C:\\Windows';
     const powershell = join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+    const desktopBinary = execFileSync(
+      powershell,
+      [
+        '-NoProfile',
+        '-NonInteractive',
+        '-Command',
+        "$processPath = Get-Process codex -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty Path; if ($processPath) { $processPath; exit }; $package = Get-AppxPackage OpenAI.Codex -ErrorAction SilentlyContinue | Select-Object -First 1; if ($package) { Join-Path $package.InstallLocation 'app\\resources\\codex.exe' }"
+      ],
+      { encoding: 'utf8', windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] }
+    ).trim();
+    if (desktopBinary && existsSync(desktopBinary)) return desktopBinary;
+  } catch {
+    // Continue with the generic Windows command resolver.
+  }
+
+  try {
+    const systemRoot = process.env.SystemRoot ?? 'C:\\Windows';
+    const powershell = join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
     const resolved = execFileSync(
       powershell,
       ['-NoProfile', '-NonInteractive', '-Command', '(Get-Command codex -ErrorAction Stop).Source'],
-      { encoding: 'utf8', windowsHide: true }
+      { encoding: 'utf8', windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] }
     ).trim();
     if (resolved && existsSync(resolved)) return resolved;
   } catch {
