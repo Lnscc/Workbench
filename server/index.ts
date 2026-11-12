@@ -1,11 +1,13 @@
 import express, { type Response } from 'express';
 import { CodexClient } from './codex-client.js';
+import { CodexProjectState } from './codex-project-state.js';
 import { StatusStore } from './status-store.js';
 import type { SectionListResult, ThreadListResult, WorkbenchStatus } from './types.js';
 
 const HOST = '127.0.0.1';
 const PORT = Number(process.env.WORKBENCH_PORT ?? 4100);
 const client = new CodexClient();
+const projectState = new CodexProjectState();
 const statusStore = new StatusStore();
 await statusStore.init();
 const app = express();
@@ -20,6 +22,7 @@ async function withCodex<T>(operation: () => Promise<T>): Promise<T> {
 }
 
 async function listThreads(): Promise<ThreadListResult> {
+  const projects = await projectState.read();
   const result = await withCodex(() => client.request<ThreadListResult>('thread/list', {
     limit: 100,
     archived: false,
@@ -28,7 +31,16 @@ async function listThreads(): Promise<ThreadListResult> {
     sortDirection: 'desc'
   }));
   const uniqueThreads = [...new Map(result.data.map(thread => [thread.id, thread])).values()]
-    .map(thread => ({ ...thread, workbenchStatus: statusStore.get(thread.id) }));
+    .map(thread => {
+      const project = projectState.resolveProject(projects, thread.id, thread.cwd, thread.projectId);
+      return {
+        ...thread,
+        projectId: project?.id ?? null,
+        project,
+        isUnread: projects.unreadThreadIds.has(thread.id),
+        workbenchStatus: statusStore.get(thread.id)
+      };
+    });
   return { ...result, data: uniqueThreads };
 }
 
@@ -52,7 +64,7 @@ app.get('/api/threads', async (request, response) => {
     const result = await listThreads();
     const needle = searchTerm.toLocaleLowerCase('de');
     const data = needle
-      ? result.data.filter(thread => [thread.name, thread.preview, thread.cwd, thread.section?.name]
+      ? result.data.filter(thread => [thread.name, thread.preview, thread.cwd, thread.project?.name, thread.section?.name]
         .filter(Boolean)
         .join(' ')
         .toLocaleLowerCase('de')
@@ -61,6 +73,15 @@ app.get('/api/threads', async (request, response) => {
     response.json({ ...result, data });
   } catch (error) {
     response.status(502).json({ error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+app.get('/api/projects', async (_request, response) => {
+  try {
+    const snapshot = await projectState.read();
+    response.json({ data: snapshot.projects });
+  } catch (error) {
+    response.status(500).json({ error: error instanceof Error ? error.message : String(error) });
   }
 });
 
@@ -123,7 +144,10 @@ const monitor = setInterval(async () => {
     const signature = JSON.stringify(result.data.map(thread => [
       thread.id,
       thread.updatedAt,
-      thread.section?.id ?? null
+      thread.section?.id ?? null,
+      thread.projectId,
+      thread.status,
+      thread.isUnread
     ]));
     if (lastThreadSignature !== null && signature !== lastThreadSignature) publishUpdate('thread/metadata-detected');
     lastThreadSignature = signature;

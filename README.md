@@ -21,13 +21,17 @@ Workbench will run locally and communicate with the Codex app-server. The browse
 Workbench UI
      |
 Local backend
-     |
-Codex app-server
-     |
-Local Codex threads and sections
+     |------------------|
+Codex app-server   Codex desktop state (read-only)
+     |                  |
+Local threads      Projects and assignments
 ```
 
 Workbench statuses are manual and independent from Codex's native sidebar sections. Moving a card never changes Codex sections such as Pinned. Assignments are stored locally in `%LOCALAPPDATA%\Workbench\state.json`. A chat can be opened directly through its `codex://threads/<thread-id>` link.
+
+Project names, paths, and explicit chat assignments are read without modification from `%USERPROFILE%\.codex\.codex-global-state.json`. If that internal desktop format is unavailable or changes, Workbench falls back to the app-server project ID and working directory.
+
+Workbench also reads the desktop's unread-chat state and shows it as a live badge. Runtime badges such as **Active** or **Approval required** come from the app-server status. These runtime events are connection-scoped, so Workbench can only show them for chats loaded through its own app-server connection; it does not observe the separate Codex desktop process internally.
 
 ## Feasibility status
 
@@ -62,10 +66,11 @@ Open `http://127.0.0.1:5173`. The local API binds to `127.0.0.1:4100`.
 - Deduplicate historical session entries by thread ID
 - Organize chats manually across Unsorted, Todo, In Progress, and Done
 - Move cards with drag and drop
-- Filter chats by their real working-directory project
+- List all local Codex projects and filter chats by their explicit project assignment
 - Persist statuses locally without changing Codex sidebar organization
 - Search titles, previews, projects, and Codex sections
 - Open a chat in Codex through its native deep link
+- Show live badges for unread chats and available app-server activity states
 - Refresh automatically when thread metadata changes
 - Refresh on window focus, visibility changes, and a periodic fallback
 - Keep all Workbench services bound to localhost
@@ -77,8 +82,8 @@ Open `http://127.0.0.1:5173`. The local API binds to `127.0.0.1:4100`.
 - [x] Automatic chat updates
 - [x] Unsorted / Todo / In Progress / Done board
 - [x] Drag-and-drop thread movement
-- [ ] Search and project filters
-- [ ] Direct links back to Codex
+- [x] Search and project filters
+- [x] Direct links back to Codex
 - [ ] Archived-thread view
 - [ ] Local packaging and one-click startup
 

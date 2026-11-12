@@ -4,16 +4,24 @@ export type CodexSection = {
   appearance?: { color?: string | null; icon?: string | null } | null;
 };
 
+export type CodexProject = {
+  id: string;
+  name: string;
+  rootPaths: string[];
+};
+
 export type CodexThread = {
   id: string;
   name: string | null;
   preview: string;
   cwd: string;
   projectId: string | null;
+  project: CodexProject | null;
   createdAt: number;
   updatedAt: number;
   recencyAt: number | null;
   status: unknown;
+  isUnread: boolean;
   section: CodexSection | null;
   workbenchStatus: WorkbenchStatus | null;
 };
