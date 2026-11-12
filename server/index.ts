@@ -2,6 +2,7 @@ import express, { type Response } from 'express';
 import { CodexClient } from './codex-client.js';
 import { CodexProjectState } from './codex-project-state.js';
 import { StatusStore } from './status-store.js';
+import { CodexSessionActivity } from './session-activity.js';
 import type { SectionListResult, ThreadListResult, WorkbenchStatus } from './types.js';
 
 const HOST = '127.0.0.1';
@@ -9,6 +10,7 @@ const PORT = Number(process.env.WORKBENCH_PORT ?? 4100);
 const client = new CodexClient();
 const projectState = new CodexProjectState();
 const statusStore = new StatusStore();
+const sessionActivity = new CodexSessionActivity();
 await statusStore.init();
 const app = express();
 const eventClients = new Set<Response>();
@@ -30,19 +32,21 @@ async function listThreads(): Promise<ThreadListResult> {
     sortKey: 'updated_at',
     sortDirection: 'desc'
   }));
-  const uniqueThreads = [...new Map(result.data.map(thread => [thread.id, thread])).values()]
-    .map(thread => {
+  const uniqueThreads = await Promise.all([...new Map(result.data.map(thread => [thread.id, thread])).values()]
+    .map(async thread => {
       const project = projectState.resolveProject(projects, thread.id, thread.cwd, thread.projectId);
       const workbenchState = statusStore.get(thread.id);
+      const appServerWorking = Boolean(thread.status && typeof thread.status === 'object' && (thread.status as { type?: unknown }).type === 'active');
       return {
         ...thread,
         projectId: project?.id ?? null,
         project,
         isUnread: projects.unreadThreadIds.has(thread.id),
+        isCodexWorking: appServerWorking || await sessionActivity.isWorking(thread.path),
         workbenchStatus: workbenchState?.status ?? null,
         workbenchStatusChangedAt: workbenchState?.changedAt ?? null
       };
-    });
+    }));
   return { ...result, data: uniqueThreads };
 }
 
@@ -150,7 +154,8 @@ const monitor = setInterval(async () => {
       thread.section?.id ?? null,
       thread.projectId,
       thread.status,
-      thread.isUnread
+      thread.isUnread,
+      thread.isCodexWorking
     ]));
     if (lastThreadSignature !== null && signature !== lastThreadSignature) publishUpdate('thread/metadata-detected');
     lastThreadSignature = signature;

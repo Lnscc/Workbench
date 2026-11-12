@@ -21,7 +21,9 @@ export type CodexThread = {
   updatedAt: number;
   recencyAt: number | null;
   status: unknown;
+  path?: string | null;
   isUnread: boolean;
+  isCodexWorking: boolean;
   section: CodexSection | null;
   workbenchStatus: WorkbenchStatus | null;
   workbenchStatusChangedAt: number | null;
