@@ -21,13 +21,19 @@ type LiveBadge = { label: string; kind: 'active' | 'attention' | 'unread' };
 function liveBadges(thread: Thread): LiveBadge[] {
   const badges: LiveBadge[] = [];
   if (thread.isUnread) badges.push({ label: 'Ungelesen', kind: 'unread' });
-  if (!thread.status || typeof thread.status !== 'object') return badges;
+  if (!thread.status || typeof thread.status !== 'object') {
+    if (thread.isCodexWorking) badges.push({ label: 'Codex arbeitet', kind: 'active' });
+    return badges;
+  }
   const status = thread.status as { type?: unknown; activeFlags?: unknown };
-  if (status.type !== 'active') return badges;
+  if (status.type !== 'active') {
+    if (thread.isCodexWorking) badges.push({ label: 'Codex arbeitet', kind: 'active' });
+    return badges;
+  }
   const flags = Array.isArray(status.activeFlags) ? status.activeFlags.filter((flag): flag is string => typeof flag === 'string') : [];
   if (flags.some(flag => flag === 'waitingOnApproval')) badges.push({ label: 'Freigabe erforderlich', kind: 'attention' });
   else if (flags.some(flag => /waiting.*(?:input|user)|(?:input|user).*required/i.test(flag))) badges.push({ label: 'Eingabe erforderlich', kind: 'attention' });
-  else badges.push({ label: 'Aktiv', kind: 'active' });
+  else badges.push({ label: 'Codex arbeitet', kind: 'active' });
   return badges;
 }
 

@@ -23,6 +23,21 @@ main {
   color: var(--purple);
 }
 
+.live-badge.active::before {
+  width: 5px;
+  height: 5px;
+  margin-right: 4px;
+  display: inline-block;
+  border-radius: 50%;
+  background: currentColor;
+  content: '';
+  animation: working-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes working-pulse {
+  50% { opacity: .25; transform: scale(.75); }
+}
+
 .thread-card h3 {
   display: flex;
   align-items: flex-start;

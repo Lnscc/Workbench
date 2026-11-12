@@ -23,6 +23,7 @@ export type Thread = {
   recencyAt: number | null;
   status: unknown;
   isUnread: boolean;
+  isCodexWorking: boolean;
   section: Section | null;
   workbenchStatus: WorkbenchStatus | null;
   workbenchStatusChangedAt: number | null;
