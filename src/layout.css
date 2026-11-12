@@ -23,14 +23,28 @@ main {
   color: var(--purple);
 }
 
-.live-badge.active::before {
+.project-and-activity {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.working-indicator {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #3e6814;
+  white-space: nowrap;
+}
+
+.working-indicator > span {
   width: 5px;
   height: 5px;
-  margin-right: 4px;
-  display: inline-block;
+  display: block;
+  flex: 0 0 auto;
   border-radius: 50%;
   background: currentColor;
-  content: '';
   animation: working-pulse 1.2s ease-in-out infinite;
 }
 

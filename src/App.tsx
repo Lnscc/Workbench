@@ -21,19 +21,12 @@ type LiveBadge = { label: string; kind: 'active' | 'attention' | 'unread' };
 function liveBadges(thread: Thread): LiveBadge[] {
   const badges: LiveBadge[] = [];
   if (thread.isUnread) badges.push({ label: 'Ungelesen', kind: 'unread' });
-  if (!thread.status || typeof thread.status !== 'object') {
-    if (thread.isCodexWorking) badges.push({ label: 'Codex arbeitet', kind: 'active' });
-    return badges;
-  }
+  if (!thread.status || typeof thread.status !== 'object') return badges;
   const status = thread.status as { type?: unknown; activeFlags?: unknown };
-  if (status.type !== 'active') {
-    if (thread.isCodexWorking) badges.push({ label: 'Codex arbeitet', kind: 'active' });
-    return badges;
-  }
+  if (status.type !== 'active') return badges;
   const flags = Array.isArray(status.activeFlags) ? status.activeFlags.filter((flag): flag is string => typeof flag === 'string') : [];
   if (flags.some(flag => flag === 'waitingOnApproval')) badges.push({ label: 'Freigabe erforderlich', kind: 'attention' });
   else if (flags.some(flag => /waiting.*(?:input|user)|(?:input|user).*required/i.test(flag))) badges.push({ label: 'Eingabe erforderlich', kind: 'attention' });
-  else badges.push({ label: 'Codex arbeitet', kind: 'active' });
   return badges;
 }
 
@@ -44,7 +37,7 @@ function ThreadCard({ thread, moving }: { thread: Thread; moving: boolean }) {
   return <article className={`thread-card${moving ? ' moving' : ''}`} draggable={!moving} onDragStart={event => {
     event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', thread.id);
   }}>
-    <div className="card-meta"><span className="project-chip">{projectName(thread)}</span><span>{formatDate(thread.updatedAt)}</span></div>
+    <div className="card-meta"><span className="project-and-activity"><span className="project-chip">{projectName(thread)}</span>{thread.isCodexWorking ? <span className="working-indicator" title="Codex arbeitet in diesem Chat"><span />Codex arbeitet</span> : null}</span><span>{formatDate(thread.updatedAt)}</span></div>
     {badges.length ? <div className="live-badges">{badges.map(badge => <span className={`live-badge ${badge.kind}`} key={badge.kind}>{badge.label}</span>)}</div> : null}
     <h3><a href={`codex://threads/${thread.id}`}>{title}</a>{isPinned ? <span className="pin-icon" title="In Codex angepinnt" aria-label="In Codex angepinnt">📌</span> : null}</h3>
     {thread.preview && thread.preview !== title ? <p>{thread.preview}</p> : null}
