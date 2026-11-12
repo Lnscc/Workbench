@@ -72,6 +72,7 @@ Open `http://127.0.0.1:5173`. The local API binds to `127.0.0.1:4100`.
 - Hide chats after three days in Done, with a manual toggle and automatic inclusion in search results
 - Open a chat in Codex through its native deep link
 - Show live badges for unread chats and available app-server activity states
+- Indicate when Codex is currently working in a desktop chat by monitoring local session lifecycle events read-only
 - Refresh automatically when thread metadata changes
 - Refresh on window focus, visibility changes, and a periodic fallback
 - Keep all Workbench services bound to localhost
