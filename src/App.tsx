@@ -33,14 +33,15 @@ function liveBadges(thread: Thread): LiveBadge[] {
 function ThreadCard({ thread, moving }: { thread: Thread; moving: boolean }) {
   const title = thread.name || thread.preview || 'Unbenannter Chat';
   const badges = liveBadges(thread);
+  const isPinned = thread.section?.name.toLocaleLowerCase('en-US') === 'pinned';
   return <article className={`thread-card${moving ? ' moving' : ''}`} draggable={!moving} onDragStart={event => {
     event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', thread.id);
   }}>
     <div className="card-meta"><span className="project-chip">{projectName(thread)}</span><span>{formatDate(thread.updatedAt)}</span></div>
     {badges.length ? <div className="live-badges">{badges.map(badge => <span className={`live-badge ${badge.kind}`} key={badge.kind}>{badge.label}</span>)}</div> : null}
-    <h3><a href={`codex://threads/${thread.id}`}>{title}</a></h3>
+    <h3><a href={`codex://threads/${thread.id}`}>{title}</a>{isPinned ? <span className="pin-icon" title="In Codex angepinnt" aria-label="In Codex angepinnt">📌</span> : null}</h3>
     {thread.preview && thread.preview !== title ? <p>{thread.preview}</p> : null}
-    {thread.section ? <div className="codex-meta">Codex: {thread.section.name}</div> : null}
+    {thread.section && !isPinned ? <div className="codex-meta">Codex: {thread.section.name}</div> : null}
   </article>;
 }
 
@@ -95,13 +96,14 @@ export function App() {
       return matchesProject && matchesSearch;
     });
   }, [project, query, threads]);
+  const visibleColumns = threads.some(thread => thread.workbenchStatus === null) ? columns : columns.filter(column => column.id !== 'unsorted');
 
   return <div className="app-shell">
     <header className="topbar"><div className="brand"><div className="brand-mark">W</div><div><strong>Workbench</strong><span>{threads.length} Codex-Chats · Live</span></div></div></header>
     <main>
       <section className="board-tools"><div><h1>Chat Board</h1><p>Status per Drag & Drop verwalten</p></div><div className="filters"><label className="search-field"><span>⌕</span><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Chats durchsuchen" /></label><label className="project-filter"><span>Projekt</span><select value={project} onChange={event => setProject(event.target.value)}><option value="all">Alle Projekte</option>{projects.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}<option value="none">{NO_PROJECT}</option></select></label><span className="result-count">{visibleThreads.length} von {threads.length}</span></div></section>
       {loadState === 'loading' ? <section className="message-state"><div className="spinner" /><h2>Verbinde mit Codex …</h2></section> : loadState === 'error' ? <section className="message-state error-state"><span>!</span><h2>Verbindung fehlgeschlagen</h2><p>{error}</p><button onClick={() => void loadThreads()}>Erneut versuchen</button></section> :
-        <section className="board" aria-label="Workbench Kanban-Board">{columns.map(column => { const items = visibleThreads.filter(thread => (thread.workbenchStatus ?? 'unsorted') === column.id); return <section className={`board-column column-${column.id}${dragOver === column.id ? ' drag-over' : ''}`} key={column.id} onDragOver={event => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setDragOver(column.id); }} onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setDragOver(null); }} onDrop={event => { event.preventDefault(); setDragOver(null); const id = event.dataTransfer.getData('text/plain'); if (id) void moveThread(id, column.id); }}><header><h2>{column.label}</h2><span>{items.length}</span></header><div className="column-cards">{items.map(thread => <ThreadCard key={thread.id} thread={thread} moving={movingIds.has(thread.id)} />)}{items.length === 0 ? <div className="empty-column">Chat hierher ziehen</div> : null}</div></section>; })}</section>}
+        <section className={`board columns-${visibleColumns.length}`} aria-label="Workbench Kanban-Board">{visibleColumns.map(column => { const items = visibleThreads.filter(thread => (thread.workbenchStatus ?? 'unsorted') === column.id); return <section className={`board-column column-${column.id}${dragOver === column.id ? ' drag-over' : ''}`} key={column.id} onDragOver={event => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setDragOver(column.id); }} onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setDragOver(null); }} onDrop={event => { event.preventDefault(); setDragOver(null); const id = event.dataTransfer.getData('text/plain'); if (id) void moveThread(id, column.id); }}><header><h2>{column.label}</h2><span>{items.length}</span></header><div className="column-cards">{items.map(thread => <ThreadCard key={thread.id} thread={thread} moving={movingIds.has(thread.id)} />)}{items.length === 0 ? <div className="empty-column">Chat hierher ziehen</div> : null}</div></section>; })}</section>}
     </main>{toast ? <div className="toast" role="alert">{toast}</div> : null}
   </div>;
 }
