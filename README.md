@@ -69,6 +69,7 @@ Open `http://127.0.0.1:5173`. The local API binds to `127.0.0.1:4100`.
 - List all local Codex projects and filter chats by their explicit project assignment
 - Persist statuses locally without changing Codex sidebar organization
 - Search titles, previews, projects, and Codex sections
+- Hide chats after three days in Done, with a manual toggle and automatic inclusion in search results
 - Open a chat in Codex through its native deep link
 - Show live badges for unread chats and available app-server activity states
 - Refresh automatically when thread metadata changes

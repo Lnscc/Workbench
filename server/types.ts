@@ -24,6 +24,7 @@ export type CodexThread = {
   isUnread: boolean;
   section: CodexSection | null;
   workbenchStatus: WorkbenchStatus | null;
+  workbenchStatusChangedAt: number | null;
 };
 
 export type WorkbenchStatus = 'todo' | 'progress' | 'done';

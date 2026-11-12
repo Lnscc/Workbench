@@ -25,6 +25,7 @@ export type Thread = {
   isUnread: boolean;
   section: Section | null;
   workbenchStatus: WorkbenchStatus | null;
+  workbenchStatusChangedAt: number | null;
 };
 
 export type ProjectListResponse = { data: Project[] };

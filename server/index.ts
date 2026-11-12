@@ -33,12 +33,14 @@ async function listThreads(): Promise<ThreadListResult> {
   const uniqueThreads = [...new Map(result.data.map(thread => [thread.id, thread])).values()]
     .map(thread => {
       const project = projectState.resolveProject(projects, thread.id, thread.cwd, thread.projectId);
+      const workbenchState = statusStore.get(thread.id);
       return {
         ...thread,
         projectId: project?.id ?? null,
         project,
         isUnread: projects.unreadThreadIds.has(thread.id),
-        workbenchStatus: statusStore.get(thread.id)
+        workbenchStatus: workbenchState?.status ?? null,
+        workbenchStatusChangedAt: workbenchState?.changedAt ?? null
       };
     });
   return { ...result, data: uniqueThreads };
@@ -95,8 +97,9 @@ app.put('/api/threads/:threadId/status', async (request, response) => {
   }
   try {
     await statusStore.set(threadId, status as WorkbenchStatus | null);
+    const workbenchState = statusStore.get(threadId);
     publishUpdate('workbench/status-changed');
-    response.json({ threadId, status });
+    response.json({ threadId, status, changedAt: workbenchState?.changedAt ?? null });
   } catch (error) {
     response.status(500).json({ error: error instanceof Error ? error.message : String(error) });
   }

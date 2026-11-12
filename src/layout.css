@@ -6,6 +6,23 @@ main {
   grid-template-columns: repeat(3, minmax(260px, 1fr));
 }
 
+.old-done-toggle {
+  height: 40px;
+  padding: 0 11px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--paper);
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.old-done-toggle[aria-pressed='true'] {
+  border-color: var(--purple);
+  color: var(--purple);
+}
+
 .thread-card h3 {
   display: flex;
   align-items: flex-start;
