@@ -24,10 +24,20 @@ main {
 }
 
 .project-and-activity {
+  flex: 1 1 auto;
   min-width: 0;
   display: flex;
   align-items: center;
   gap: 6px;
+}
+
+.project-and-activity .project-chip {
+  max-width: none;
+  flex: 0 1 auto;
+}
+
+.card-meta > :last-child {
+  flex: 0 0 auto;
 }
 
 .working-indicator {
