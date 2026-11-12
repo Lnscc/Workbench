@@ -41,10 +41,16 @@ main {
 }
 
 .working-indicator {
+  padding: 3px 6px;
   display: flex;
   align-items: center;
   gap: 4px;
+  border-radius: 999px;
+  background: #e1f5bf;
   color: #3e6814;
+  font-size: 8px;
+  text-transform: uppercase;
+  letter-spacing: .02em;
   white-space: nowrap;
 }
 
