@@ -73,6 +73,7 @@ Open `http://127.0.0.1:5173`. The local API binds to `127.0.0.1:4100`.
 - Open a chat in Codex through its native deep link
 - Show live badges for unread chats and available app-server activity states
 - Indicate when Codex is currently working in a desktop chat by monitoring local session lifecycle events read-only
+- Mark chats whose latest turn was interrupted by a Codex usage or spending limit
 - Refresh automatically when thread metadata changes
 - Refresh on window focus, visibility changes, and a periodic fallback
 - Keep all Workbench services bound to localhost
