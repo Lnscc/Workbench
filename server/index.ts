@@ -37,12 +37,14 @@ async function listThreads(): Promise<ThreadListResult> {
       const project = projectState.resolveProject(projects, thread.id, thread.cwd, thread.projectId);
       const workbenchState = statusStore.get(thread.id);
       const appServerWorking = Boolean(thread.status && typeof thread.status === 'object' && (thread.status as { type?: unknown }).type === 'active');
+      const sessionState = await sessionActivity.read(thread.path);
       return {
         ...thread,
         projectId: project?.id ?? null,
         project,
         isUnread: projects.unreadThreadIds.has(thread.id),
-        isCodexWorking: appServerWorking || await sessionActivity.isWorking(thread.path),
+        isCodexWorking: appServerWorking || sessionState.working,
+        codexInterruption: sessionState.interruption,
         workbenchStatus: workbenchState?.status ?? null,
         workbenchStatusChangedAt: workbenchState?.changedAt ?? null
       };
@@ -155,7 +157,8 @@ const monitor = setInterval(async () => {
       thread.projectId,
       thread.status,
       thread.isUnread,
-      thread.isCodexWorking
+      thread.isCodexWorking,
+      thread.codexInterruption
     ]));
     if (lastThreadSignature !== null && signature !== lastThreadSignature) publishUpdate('thread/metadata-detected');
     lastThreadSignature = signature;
