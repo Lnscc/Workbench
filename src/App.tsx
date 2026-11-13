@@ -21,6 +21,7 @@ type LiveBadge = { label: string; kind: 'active' | 'attention' | 'unread' };
 function liveBadges(thread: Thread): LiveBadge[] {
   const badges: LiveBadge[] = [];
   if (thread.isUnread) badges.push({ label: 'Ungelesen', kind: 'unread' });
+  if (thread.codexInterruption === 'usage_limit') badges.push({ label: 'Nutzungslimit erreicht', kind: 'attention' });
   if (!thread.status || typeof thread.status !== 'object') return badges;
   const status = thread.status as { type?: unknown; activeFlags?: unknown };
   if (status.type !== 'active') return badges;

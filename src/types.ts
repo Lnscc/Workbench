@@ -24,6 +24,7 @@ export type Thread = {
   status: unknown;
   isUnread: boolean;
   isCodexWorking: boolean;
+  codexInterruption: 'usage_limit' | null;
   section: Section | null;
   workbenchStatus: WorkbenchStatus | null;
   workbenchStatusChangedAt: number | null;
