@@ -3,7 +3,8 @@ import { CodexClient } from './codex-client.js';
 import { CodexProjectState } from './codex-project-state.js';
 import { StatusStore } from './status-store.js';
 import { CodexSessionActivity } from './session-activity.js';
-import type { RateLimitsResponse, SectionListResult, ThreadListResult, WorkbenchStatus } from './types.js';
+import { AgentThreadIndex } from './agent-thread-index.js';
+import type { CodexThread, RateLimitsResponse, SectionListResult, ThreadListResult, WorkbenchStatus } from './types.js';
 
 const HOST = '127.0.0.1';
 const PORT = Number(process.env.WORKBENCH_PORT ?? 4100);
@@ -11,6 +12,7 @@ const client = new CodexClient();
 const projectState = new CodexProjectState();
 const statusStore = new StatusStore();
 const sessionActivity = new CodexSessionActivity();
+const agentThreadIndex = new AgentThreadIndex();
 await statusStore.init();
 const app = express();
 const eventClients = new Set<Response>();
@@ -23,16 +25,31 @@ async function withCodex<T>(operation: () => Promise<T>): Promise<T> {
   return operation();
 }
 
+function agentThreadTitle(prompt: string): string {
+  const firstLine = prompt.split(/\r?\n/, 1)[0]?.trim() || 'Agenten-Task';
+  const ticket = firstLine.match(/\b([A-Z][A-Z0-9]+-\d+)\b/)?.[1];
+  if (ticket && /\bprüf/i.test(firstLine) && /\bumgesetzt|umsetzung/i.test(firstLine)) return `${ticket} Umsetzung prüfen`;
+  return firstLine.length > 100 ? `${firstLine.slice(0, 97)}…` : firstLine;
+}
+
 async function listThreads(): Promise<ThreadListResult> {
   const projects = await projectState.read();
-  const result = await withCodex(() => client.request<ThreadListResult>('thread/list', {
-    limit: 100,
-    archived: false,
-    currentAccountOnly: true,
-    sortKey: 'updated_at',
-    sortDirection: 'desc'
-  }));
-  const uniqueThreads = await Promise.all([...new Map(result.data.map(thread => [thread.id, thread])).values()]
+  const appServerThreads = [] as ThreadListResult['data'];
+  let cursor: string | null = null;
+  do {
+    const page = await withCodex(() => client.request<ThreadListResult>('thread/list', {
+      limit: 100,
+      archived: false,
+      currentAccountOnly: true,
+      sortKey: 'updated_at',
+      sortDirection: 'desc',
+      ...(cursor ? { cursor } : {})
+    }));
+    appServerThreads.push(...page.data);
+    cursor = page.nextCursor;
+  } while (cursor);
+
+  const uniqueThreads: CodexThread[] = await Promise.all([...new Map(appServerThreads.map(thread => [thread.id, thread])).values()]
     .map(async thread => {
       const project = projectState.resolveProject(projects, thread.id, thread.cwd, thread.projectId);
       const workbenchState = statusStore.get(thread.id);
@@ -46,10 +63,45 @@ async function listThreads(): Promise<ThreadListResult> {
         isCodexWorking: appServerWorking || sessionState.working,
         codexInterruption: sessionState.interruption,
         workbenchStatus: workbenchState?.status ?? null,
-        workbenchStatusChangedAt: workbenchState?.changedAt ?? null
+        workbenchStatusChangedAt: workbenchState?.changedAt ?? null,
+        source: 'user' as const,
+        parentThreadId: null,
+        children: []
       };
     }));
-  return { ...result, data: uniqueThreads };
+
+  const threadsById = new Map(uniqueThreads.map(thread => [thread.id, thread]));
+  const agentRecords = await agentThreadIndex.list();
+  await Promise.all(agentRecords.map(async record => {
+    const parent = threadsById.get(record.parentThreadId);
+    if (!parent) return;
+    const project = projectState.resolveProject(projects, record.id, record.cwd, null);
+    const sessionState = await sessionActivity.read(record.path);
+    parent.children.push({
+      id: record.id,
+      name: agentThreadTitle(record.prompt),
+      preview: record.prompt,
+      cwd: record.cwd,
+      projectId: project?.id ?? parent.projectId,
+      project: project ?? parent.project,
+      createdAt: record.createdAt,
+      updatedAt: record.updatedAt,
+      recencyAt: record.updatedAt,
+      status: sessionState.working ? { type: 'active', activeFlags: [] } : { type: 'idle' },
+      path: record.path,
+      isUnread: false,
+      isCodexWorking: sessionState.working,
+      codexInterruption: sessionState.interruption,
+      section: null,
+      workbenchStatus: parent.workbenchStatus,
+      workbenchStatusChangedAt: parent.workbenchStatusChangedAt,
+      source: 'agent_created',
+      parentThreadId: parent.id,
+      children: []
+    });
+  }));
+  for (const thread of uniqueThreads) thread.children.sort((left, right) => right.updatedAt - left.updatedAt);
+  return { data: uniqueThreads, nextCursor: null };
 }
 
 function publishUpdate(method: string): void {
@@ -171,7 +223,8 @@ const monitor = setInterval(async () => {
       thread.status,
       thread.isUnread,
       thread.isCodexWorking,
-      thread.codexInterruption
+      thread.codexInterruption,
+      thread.children.map(child => [child.id, child.updatedAt, child.isCodexWorking, child.codexInterruption])
     ]));
     if (lastThreadSignature !== null && signature !== lastThreadSignature) publishUpdate('thread/metadata-detected');
     lastThreadSignature = signature;

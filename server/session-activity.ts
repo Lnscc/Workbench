@@ -24,7 +24,7 @@ export function parseSessionTail(tail: string, modifiedAt: number, now = Date.no
           reason?: unknown;
         };
       };
-      if (event.type === 'turn_context') {
+      if (event.type === 'turn_context' || (event.type === 'event_msg' && event.payload?.type === 'task_started')) {
         lastStart = index;
         interruption = null;
       }

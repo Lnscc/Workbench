@@ -45,6 +45,9 @@ export type Thread = {
   section: Section | null;
   workbenchStatus: WorkbenchStatus | null;
   workbenchStatusChangedAt: number | null;
+  source: 'user' | 'agent_created';
+  parentThreadId: string | null;
+  children: Thread[];
 };
 
 export type ProjectListResponse = { data: Project[] };

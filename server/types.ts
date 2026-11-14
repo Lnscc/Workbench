@@ -28,6 +28,9 @@ export type CodexThread = {
   section: CodexSection | null;
   workbenchStatus: WorkbenchStatus | null;
   workbenchStatusChangedAt: number | null;
+  source: 'user' | 'agent_created';
+  parentThreadId: string | null;
+  children: CodexThread[];
 };
 
 export type WorkbenchStatus = 'todo' | 'progress' | 'done';
