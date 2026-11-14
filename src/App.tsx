@@ -30,9 +30,10 @@ function resetLabel(resetsAt: number | null) {
 
 function UsageMeter({ label, window }: { label: string; window: RateLimitWindow }) {
   const used = Math.max(0, Math.min(100, window.usedPercent));
-  return <div className="usage-meter" title={`${label}: ${Math.round(used)} % genutzt · ${resetLabel(window.resetsAt)}`}>
-    <div className="usage-copy"><span>{label}</span><strong>{Math.round(used)} %</strong></div>
-    <div className="usage-track"><span style={{ width: `${used}%` }} /></div>
+  const remaining = 100 - used;
+  return <div className="usage-meter" title={`${label}: noch ${Math.round(remaining)} % · ${resetLabel(window.resetsAt)}`}>
+    <div className="usage-copy"><span>{label}</span><strong>Noch {Math.round(remaining)} %</strong></div>
+    <div className="usage-track"><span style={{ width: `${remaining}%` }} /></div>
     <small>{resetLabel(window.resetsAt)}</small>
   </div>;
 }
