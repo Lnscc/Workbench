@@ -8,7 +8,11 @@ const columns: { id: ColumnStatus; label: string }[] = [
   { id: 'progress', label: 'In Progress' }, { id: 'done', label: 'Done' }
 ];
 const NO_PROJECT = 'Ohne Projekt';
-const OLD_DONE_AGE = 3 * 24 * 60 * 60 * 1000;
+const COLUMN_PAGE_SIZE = 20;
+
+function initialColumnLimits(): Record<ColumnStatus, number> {
+  return { unsorted: COLUMN_PAGE_SIZE, todo: COLUMN_PAGE_SIZE, progress: COLUMN_PAGE_SIZE, done: COLUMN_PAGE_SIZE };
+}
 
 function formatDate(timestamp: number) {
   return new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(timestamp * 1000));
@@ -79,7 +83,20 @@ function ThreadCard({ thread, moving }: { thread: Thread; moving: boolean }) {
     <h3><a href={`codex://threads/${thread.id}`}>{title}</a>{usageLimitReached ? <span className="interruption-icon" title="Dieser Chat wurde wegen eines erreichten Nutzungslimits unterbrochen" aria-label="Nutzungslimit erreicht">i</span> : null}{isPinned ? <span className="pin-icon" title="In Codex angepinnt" aria-label="In Codex angepinnt">📌</span> : null}</h3>
     {thread.preview && thread.preview !== title ? <p>{thread.preview}</p> : null}
     {thread.section && !isPinned ? <div className="codex-meta">Codex: {thread.section.name}</div> : null}
+    {thread.children.length > 0 ? <details className="agent-tasks" onClick={event => event.stopPropagation()}>
+      <summary>{thread.children.length} {thread.children.length === 1 ? 'Agenten-Task' : 'Agenten-Tasks'}</summary>
+      <div className="agent-task-list">{thread.children.map(child => <AgentTask thread={child} key={child.id} />)}</div>
+    </details> : null}
   </article>;
+}
+
+function AgentTask({ thread }: { thread: Thread }) {
+  const title = thread.name || 'Agenten-Task';
+  return <div className="agent-task">
+    <span className={`agent-task-state${thread.isCodexWorking ? ' working' : ''}`} aria-hidden="true" />
+    <div><a href={`codex://threads/${thread.id}`}>{title}</a><span>{thread.isCodexWorking ? 'Codex arbeitet' : formatDate(thread.updatedAt)}</span></div>
+    {thread.codexInterruption === 'usage_limit' ? <span className="interruption-icon" title="Dieser Task wurde wegen eines erreichten Nutzungslimits unterbrochen" aria-label="Nutzungslimit erreicht">i</span> : null}
+  </div>;
 }
 
 export function App() {
@@ -88,7 +105,7 @@ export function App() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [usage, setUsage] = useState<RateLimitsResponse | null>(null);
   const [project, setProject] = useState('all'); const [dragOver, setDragOver] = useState<ColumnStatus | null>(null);
-  const [showOldDone, setShowOldDone] = useState(false);
+  const [columnLimits, setColumnLimits] = useState<Record<ColumnStatus, number>>(initialColumnLimits);
   const [movingIds, setMovingIds] = useState<Set<string>>(new Set()); const requestInFlight = useRef(false);
 
   const loadThreads = useCallback(async (background = false) => {
@@ -113,6 +130,7 @@ export function App() {
     return () => { events.close(); window.clearInterval(fallback); window.removeEventListener('focus', refresh); document.removeEventListener('visibilitychange', visible); };
   }, [loadThreads]);
   useEffect(() => { if (!toast) return; const timer = window.setTimeout(() => setToast(''), 4_500); return () => window.clearTimeout(timer); }, [toast]);
+  useEffect(() => { setColumnLimits(initialColumnLimits()); }, [project]);
 
   const moveThread = useCallback(async (threadId: string, target: ColumnStatus) => {
     const status = target === 'unsorted' ? null : target; const previousThread = threads.find(thread => thread.id === threadId);
@@ -131,23 +149,35 @@ export function App() {
     } finally { setMovingIds(current => { const next = new Set(current); next.delete(threadId); return next; }); }
   }, [movingIds, threads]);
 
+  const visibleIdsByColumn = useMemo(() => {
+    const result = new Map<ColumnStatus, Set<string>>();
+    for (const column of columns) {
+      const ids = threads
+        .filter(thread => (thread.workbenchStatus ?? 'unsorted') === column.id
+          && (project === 'all' || (project === 'none' ? thread.project === null : thread.projectId === project)))
+        .sort((left, right) => right.updatedAt - left.updatedAt)
+        .slice(0, columnLimits[column.id])
+        .map(thread => thread.id);
+      result.set(column.id, new Set(ids));
+    }
+    return result;
+  }, [columnLimits, project, threads]);
   const visibleThreads = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase('de');
-    const oldDoneCutoff = Date.now() - OLD_DONE_AGE;
     return threads.filter(thread => {
       const matchesProject = project === 'all' || (project === 'none' ? thread.project === null : thread.projectId === project);
-      const matchesSearch = !needle || [thread.name, thread.preview, thread.cwd, thread.project?.name, thread.section?.name].filter(Boolean).join(' ').toLocaleLowerCase('de').includes(needle);
-      const isOldDone = thread.workbenchStatus === 'done' && thread.workbenchStatusChangedAt !== null && thread.workbenchStatusChangedAt < oldDoneCutoff;
-      return matchesProject && matchesSearch && (!isOldDone || showOldDone || Boolean(needle));
+      const searchable = [thread.name, thread.preview, thread.cwd, thread.project?.name, thread.section?.name,
+        ...thread.children.flatMap(child => [child.name, child.preview, child.cwd])].filter(Boolean).join(' ').toLocaleLowerCase('de');
+      const matchesSearch = !needle || searchable.includes(needle);
+      const column = thread.workbenchStatus ?? 'unsorted';
+      const isHidden = !visibleIdsByColumn.get(column)?.has(thread.id);
+      return matchesProject && matchesSearch && (!isHidden || Boolean(needle));
     });
-  }, [project, query, showOldDone, threads]);
-  const hiddenDoneCount = useMemo(() => {
-    const oldDoneCutoff = Date.now() - OLD_DONE_AGE;
-    return threads.filter(thread => {
+  }, [project, query, threads, visibleIdsByColumn]);
+  const hiddenCounts = useMemo(() => Object.fromEntries(columns.map(column => [column.id, threads.filter(thread => {
       const matchesProject = project === 'all' || (project === 'none' ? thread.project === null : thread.projectId === project);
-      return matchesProject && thread.workbenchStatus === 'done' && thread.workbenchStatusChangedAt !== null && thread.workbenchStatusChangedAt < oldDoneCutoff;
-    }).length;
-  }, [project, threads]);
+      return matchesProject && (thread.workbenchStatus ?? 'unsorted') === column.id && !visibleIdsByColumn.get(column.id)?.has(thread.id);
+    }).length])) as Record<ColumnStatus, number>, [project, threads, visibleIdsByColumn]);
   const visibleColumns = threads.some(thread => thread.workbenchStatus === null) ? columns : columns.filter(column => column.id !== 'unsorted');
   const usageSnapshots = useMemo(() => {
     if (!usage) return [];
@@ -161,9 +191,9 @@ export function App() {
   return <div className="app-shell">
     <header className="topbar"><div className="brand"><div className="brand-mark">W</div><div><strong>Workbench</strong><span>{threads.length} Codex-Chats · Live</span></div></div>{usageSnapshots.length > 0 ? <div className={`usage-panel${usage?.ordinaryUsageAllowed === false ? ' blocked' : ''}`}>{usageSnapshots.map((snapshot, index) => <UsageSummary snapshot={snapshot} key={snapshot.limitId ?? index} />)}</div> : null}</header>
     <main>
-      <section className="board-tools"><div><h1>Chat Board</h1><p>Status per Drag & Drop verwalten</p></div><div className="filters"><label className="search-field"><span>⌕</span><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Chats durchsuchen" /></label><label className="project-filter"><span>Projekt</span><select value={project} onChange={event => setProject(event.target.value)}><option value="all">Alle Projekte</option>{projects.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}<option value="none">{NO_PROJECT}</option></select></label>{hiddenDoneCount > 0 && !query.trim() ? <button className="old-done-toggle" type="button" aria-pressed={showOldDone} onClick={() => setShowOldDone(current => !current)}>{showOldDone ? 'Ältere Done ausblenden' : `Ältere Done anzeigen (${hiddenDoneCount})`}</button> : null}<span className="result-count">{visibleThreads.length} von {threads.length}</span></div></section>
+      <section className="board-tools"><div><h1>Chat Board</h1><p>Status per Drag & Drop verwalten</p></div><div className="filters"><label className="search-field"><span>⌕</span><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Chats durchsuchen" /></label><label className="project-filter"><span>Projekt</span><select value={project} onChange={event => setProject(event.target.value)}><option value="all">Alle Projekte</option>{projects.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}<option value="none">{NO_PROJECT}</option></select></label><span className="result-count">{visibleThreads.length} von {threads.length}</span></div></section>
       {loadState === 'loading' ? <section className="message-state"><div className="spinner" /><h2>Verbinde mit Codex …</h2></section> : loadState === 'error' ? <section className="message-state error-state"><span>!</span><h2>Verbindung fehlgeschlagen</h2><p>{error}</p><button onClick={() => void loadThreads()}>Erneut versuchen</button></section> :
-        <section className={`board columns-${visibleColumns.length}`} aria-label="Workbench Kanban-Board">{visibleColumns.map(column => { const items = visibleThreads.filter(thread => (thread.workbenchStatus ?? 'unsorted') === column.id); return <section className={`board-column column-${column.id}${dragOver === column.id ? ' drag-over' : ''}`} key={column.id} onDragOver={event => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setDragOver(column.id); }} onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setDragOver(null); }} onDrop={event => { event.preventDefault(); setDragOver(null); const id = event.dataTransfer.getData('text/plain'); if (id) void moveThread(id, column.id); }}><header><h2>{column.label}</h2><span>{items.length}</span></header><div className="column-cards">{items.map(thread => <ThreadCard key={thread.id} thread={thread} moving={movingIds.has(thread.id)} />)}{items.length === 0 ? <div className="empty-column">Chat hierher ziehen</div> : null}</div></section>; })}</section>}
+        <section className={`board columns-${visibleColumns.length}`} aria-label="Workbench Kanban-Board">{visibleColumns.map(column => { const items = visibleThreads.filter(thread => (thread.workbenchStatus ?? 'unsorted') === column.id); const hiddenCount = hiddenCounts[column.id]; const count = !query.trim() && hiddenCount > 0 ? `${items.length}/${items.length + hiddenCount}` : items.length; return <section className={`board-column column-${column.id}${dragOver === column.id ? ' drag-over' : ''}`} key={column.id} onDragOver={event => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setDragOver(column.id); }} onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setDragOver(null); }} onDrop={event => { event.preventDefault(); setDragOver(null); const id = event.dataTransfer.getData('text/plain'); if (id) void moveThread(id, column.id); }}><header><h2>{column.label}</h2><span>{count}</span></header><div className="column-cards">{items.map(thread => <ThreadCard key={thread.id} thread={thread} moving={movingIds.has(thread.id)} />)}{hiddenCount > 0 && !query.trim() ? <button className="load-more-column" type="button" onClick={() => setColumnLimits(current => ({ ...current, [column.id]: current[column.id] + COLUMN_PAGE_SIZE }))}>Mehr anzeigen <span>({Math.min(COLUMN_PAGE_SIZE, hiddenCount)} von {hiddenCount})</span></button> : null}{items.length === 0 ? <div className="empty-column">Chat hierher ziehen</div> : null}</div></section>; })}</section>}
     </main>{toast ? <div className="toast" role="alert">{toast}</div> : null}
   </div>;
 }
