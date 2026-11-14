@@ -150,7 +150,8 @@ client.onNotification((method) => {
   const affectsThreads = method.startsWith('thread/')
     || method.startsWith('threadSection/')
     || method.startsWith('turn/')
-    || method === 'account/rateLimits/updated';
+    || method === 'account/rateLimits/updated'
+    || method === 'account/updated';
   if (!affectsThreads) return;
   publishUpdate(method);
 });

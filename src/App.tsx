@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { Project, ProjectListResponse, RateLimitsResponse, RateLimitWindow, Thread, ThreadListResponse, WorkbenchStatus } from './types';
+import type { Project, ProjectListResponse, RateLimitSnapshot, RateLimitsResponse, RateLimitWindow, Thread, ThreadListResponse, WorkbenchStatus } from './types';
 
 type LoadState = 'loading' | 'ready' | 'error';
 type ColumnStatus = WorkbenchStatus | 'unsorted';
@@ -35,6 +35,21 @@ function UsageMeter({ label, window }: { label: string; window: RateLimitWindow 
     <div className="usage-copy"><span>{label}</span><strong>Noch {Math.round(remaining)} %</strong></div>
     <div className="usage-track"><span style={{ width: `${remaining}%` }} /></div>
     <small>{resetLabel(window.resetsAt)}</small>
+  </div>;
+}
+
+function planLabel(planType: string | null) {
+  if (planType === 'prolite' || planType === 'pro') return 'Pro';
+  if (planType === 'plus') return 'Plus';
+  return planType ?? 'Codex';
+}
+
+function UsageSummary({ snapshot }: { snapshot: RateLimitSnapshot }) {
+  return <div className="usage-summary">
+    <span className="usage-plan">{planLabel(snapshot.planType)}</span>
+    {snapshot.primary ? <UsageMeter label={usageLabel(snapshot.primary)} window={snapshot.primary} /> : null}
+    {snapshot.secondary ? <UsageMeter label={usageLabel(snapshot.secondary)} window={snapshot.secondary} /> : null}
+    {snapshot.credits?.hasCredits ? <span className="credit-balance">{snapshot.credits.unlimited ? 'Credits ∞' : `${snapshot.credits.balance ?? '–'} Credits`}</span> : null}
   </div>;
 }
 
@@ -134,10 +149,17 @@ export function App() {
     }).length;
   }, [project, threads]);
   const visibleColumns = threads.some(thread => thread.workbenchStatus === null) ? columns : columns.filter(column => column.id !== 'unsorted');
-  const codexUsage = usage?.rateLimitsByLimitId?.codex ?? usage?.rateLimits;
+  const usageSnapshots = useMemo(() => {
+    if (!usage) return [];
+    const snapshots = usage.rateLimitsByLimitId
+      ? Object.values(usage.rateLimitsByLimitId).filter((snapshot): snapshot is RateLimitSnapshot => Boolean(snapshot))
+      : [];
+    if (snapshots.length === 0) snapshots.push(usage.rateLimits);
+    return snapshots.filter(snapshot => snapshot.primary || snapshot.secondary || snapshot.credits?.hasCredits);
+  }, [usage]);
 
   return <div className="app-shell">
-    <header className="topbar"><div className="brand"><div className="brand-mark">W</div><div><strong>Workbench</strong><span>{threads.length} Codex-Chats · Live</span></div></div>{codexUsage ? <div className={`usage-panel${usage?.ordinaryUsageAllowed === false ? ' blocked' : ''}`}><span className="usage-plan">{codexUsage.planType ?? 'Codex'}</span>{codexUsage.primary ? <UsageMeter label={usageLabel(codexUsage.primary)} window={codexUsage.primary} /> : null}{codexUsage.secondary ? <UsageMeter label={usageLabel(codexUsage.secondary)} window={codexUsage.secondary} /> : null}{codexUsage.credits?.hasCredits ? <span className="credit-balance">{codexUsage.credits.unlimited ? 'Credits ∞' : `${codexUsage.credits.balance ?? '–'} Credits`}</span> : null}</div> : null}</header>
+    <header className="topbar"><div className="brand"><div className="brand-mark">W</div><div><strong>Workbench</strong><span>{threads.length} Codex-Chats · Live</span></div></div>{usageSnapshots.length > 0 ? <div className={`usage-panel${usage?.ordinaryUsageAllowed === false ? ' blocked' : ''}`}>{usageSnapshots.map((snapshot, index) => <UsageSummary snapshot={snapshot} key={snapshot.limitId ?? index} />)}</div> : null}</header>
     <main>
       <section className="board-tools"><div><h1>Chat Board</h1><p>Status per Drag & Drop verwalten</p></div><div className="filters"><label className="search-field"><span>⌕</span><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Chats durchsuchen" /></label><label className="project-filter"><span>Projekt</span><select value={project} onChange={event => setProject(event.target.value)}><option value="all">Alle Projekte</option>{projects.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}<option value="none">{NO_PROJECT}</option></select></label>{hiddenDoneCount > 0 && !query.trim() ? <button className="old-done-toggle" type="button" aria-pressed={showOldDone} onClick={() => setShowOldDone(current => !current)}>{showOldDone ? 'Ältere Done ausblenden' : `Ältere Done anzeigen (${hiddenDoneCount})`}</button> : null}<span className="result-count">{visibleThreads.length} von {threads.length}</span></div></section>
       {loadState === 'loading' ? <section className="message-state"><div className="spinner" /><h2>Verbinde mit Codex …</h2></section> : loadState === 'error' ? <section className="message-state error-state"><span>!</span><h2>Verbindung fehlgeschlagen</h2><p>{error}</p><button onClick={() => void loadThreads()}>Erneut versuchen</button></section> :
