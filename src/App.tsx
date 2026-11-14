@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Project, ProjectListResponse, RateLimitSnapshot, RateLimitsResponse, RateLimitWindow, Thread, ThreadListResponse, WorkbenchStatus } from './types';
+import { sortByUpdatedAtDesc } from './thread-order';
 
 type LoadState = 'loading' | 'ready' | 'error';
 type ColumnStatus = WorkbenchStatus | 'unsorted';
@@ -108,28 +109,44 @@ export function App() {
   const [project, setProject] = useState('all'); const [dragOver, setDragOver] = useState<ColumnStatus | null>(null);
   const [columnLimits, setColumnLimits] = useState<Record<ColumnStatus, number>>(initialColumnLimits);
   const [movingIds, setMovingIds] = useState<Set<string>>(new Set()); const requestInFlight = useRef(false);
+  const refreshQueued = useRef(false); const usageRequestInFlight = useRef(false);
 
   const loadThreads = useCallback(async (background = false) => {
-    if (requestInFlight.current) return; requestInFlight.current = true; if (!background) setLoadState('loading'); setError('');
+    if (requestInFlight.current) { refreshQueued.current = true; return; }
+    requestInFlight.current = true; if (!background) setLoadState('loading'); setError('');
     try {
-      const [threadResponse, projectResponse, usageResponse] = await Promise.all([fetch('/api/threads'), fetch('/api/projects'), fetch('/api/usage')]);
-      const body = await threadResponse.json() as ThreadListResponse | { error?: string };
-      const projectBody = await projectResponse.json() as ProjectListResponse | { error?: string };
-      const usageBody = await usageResponse.json() as RateLimitsResponse | { error?: string };
-      if (!threadResponse.ok || !('data' in body)) throw new Error('error' in body ? body.error : 'Chats konnten nicht geladen werden.');
-      if (!projectResponse.ok || !('data' in projectBody)) throw new Error('error' in projectBody ? projectBody.error : 'Projekte konnten nicht geladen werden.');
-      setThreads(body.data); setProjects(projectBody.data); if (usageResponse.ok && 'rateLimits' in usageBody) setUsage(usageBody); setLoadState('ready');
+      do {
+        refreshQueued.current = false;
+        const [threadResponse, projectResponse] = await Promise.all([fetch('/api/threads'), fetch('/api/projects')]);
+        const body = await threadResponse.json() as ThreadListResponse | { error?: string };
+        const projectBody = await projectResponse.json() as ProjectListResponse | { error?: string };
+        if (!threadResponse.ok || !('data' in body)) throw new Error('error' in body ? body.error : 'Chats konnten nicht geladen werden.');
+        if (!projectResponse.ok || !('data' in projectBody)) throw new Error('error' in projectBody ? projectBody.error : 'Projekte konnten nicht geladen werden.');
+        setThreads(body.data); setProjects(projectBody.data); setLoadState('ready');
+      } while (refreshQueued.current);
     } catch (reason) { if (!background) { setError(reason instanceof Error ? reason.message : String(reason)); setLoadState('error'); } }
     finally { requestInFlight.current = false; }
   }, []);
 
-  useEffect(() => { void loadThreads(); }, [loadThreads]);
+  const loadUsage = useCallback(async () => {
+    if (usageRequestInFlight.current) return;
+    usageRequestInFlight.current = true;
+    try {
+      const response = await fetch('/api/usage');
+      const body = await response.json() as RateLimitsResponse | { error?: string };
+      if (response.ok && 'rateLimits' in body) setUsage(body);
+    } catch {
+      // Usage information is optional and must not block live thread updates.
+    } finally { usageRequestInFlight.current = false; }
+  }, []);
+
+  useEffect(() => { void loadThreads(); void loadUsage(); }, [loadThreads, loadUsage]);
   useEffect(() => {
-    const events = new EventSource('/api/events'); const refresh = () => void loadThreads(true); events.addEventListener('codex-update', refresh);
-    const fallback = window.setInterval(refresh, 30_000); const visible = () => { if (document.visibilityState === 'visible') refresh(); };
+    const events = new EventSource('/api/events'); const refresh = () => { void loadThreads(true); void loadUsage(); }; events.addEventListener('codex-update', refresh);
+    const visible = () => { if (document.visibilityState === 'visible') refresh(); };
     window.addEventListener('focus', refresh); document.addEventListener('visibilitychange', visible);
-    return () => { events.close(); window.clearInterval(fallback); window.removeEventListener('focus', refresh); document.removeEventListener('visibilitychange', visible); };
-  }, [loadThreads]);
+    return () => { events.close(); window.removeEventListener('focus', refresh); document.removeEventListener('visibilitychange', visible); };
+  }, [loadThreads, loadUsage]);
   useEffect(() => { if (!toast) return; const timer = window.setTimeout(() => setToast(''), 4_500); return () => window.clearTimeout(timer); }, [toast]);
   useEffect(() => { setColumnLimits(initialColumnLimits()); }, [project]);
 
@@ -153,10 +170,9 @@ export function App() {
   const visibleIdsByColumn = useMemo(() => {
     const result = new Map<ColumnStatus, Set<string>>();
     for (const column of columns) {
-      const ids = threads
+      const ids = sortByUpdatedAtDesc(threads
         .filter(thread => (thread.workbenchStatus ?? 'unsorted') === column.id
-          && (project === 'all' || (project === 'none' ? thread.project === null : thread.projectId === project)))
-        .sort((left, right) => right.updatedAt - left.updatedAt)
+          && (project === 'all' || (project === 'none' ? thread.project === null : thread.projectId === project))))
         .slice(0, columnLimits[column.id])
         .map(thread => thread.id);
       result.set(column.id, new Set(ids));
@@ -165,7 +181,7 @@ export function App() {
   }, [columnLimits, project, threads]);
   const visibleThreads = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase('de');
-    return threads.filter(thread => {
+    return sortByUpdatedAtDesc(threads.filter(thread => {
       const matchesProject = project === 'all' || (project === 'none' ? thread.project === null : thread.projectId === project);
       const searchable = [thread.name, thread.preview, thread.cwd, thread.project?.name, thread.section?.name,
         ...thread.children.flatMap(child => [child.name, child.preview, child.cwd])].filter(Boolean).join(' ').toLocaleLowerCase('de');
@@ -173,7 +189,7 @@ export function App() {
       const column = thread.workbenchStatus ?? 'unsorted';
       const isHidden = !visibleIdsByColumn.get(column)?.has(thread.id);
       return matchesProject && matchesSearch && (!isHidden || Boolean(needle));
-    });
+    }));
   }, [project, query, threads, visibleIdsByColumn]);
   const hiddenCounts = useMemo(() => Object.fromEntries(columns.map(column => [column.id, threads.filter(thread => {
       const matchesProject = project === 'all' || (project === 'none' ? thread.project === null : thread.projectId === project);

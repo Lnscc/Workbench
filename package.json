@@ -9,6 +9,7 @@
     "dev:client": "vite",
     "build": "tsc -p tsconfig.server.json && tsc -b && vite build",
     "start": "node dist-server/index.js",
+    "test": "tsx --test src/**/*.test.ts",
     "typecheck": "tsc -p tsconfig.server.json --noEmit && tsc -b"
   },
   "dependencies": {

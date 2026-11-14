@@ -16,6 +16,7 @@ const agentThreadIndex = new AgentThreadIndex();
 await statusStore.init();
 const app = express();
 const eventClients = new Set<Response>();
+let stopSessionWatcher: (() => void) | null = null;
 
 app.disable('x-powered-by');
 app.use(express.json({ limit: '32kb' }));
@@ -190,11 +191,16 @@ app.get('/api/events', async (request, response) => {
   response.flushHeaders();
   response.write('event: connected\ndata: {}\n\n');
   eventClients.add(response);
+  stopSessionWatcher ??= sessionActivity.watch(() => publishUpdate('session/activity-changed'));
 
   const heartbeat = setInterval(() => response.write(': heartbeat\n\n'), 20_000);
   request.on('close', () => {
     clearInterval(heartbeat);
     eventClients.delete(response);
+    if (eventClients.size === 0) {
+      stopSessionWatcher?.();
+      stopSessionWatcher = null;
+    }
   });
 });
 
@@ -241,6 +247,7 @@ const server = app.listen(PORT, HOST, () => {
 
 function shutdown(): void {
   clearInterval(monitor);
+  stopSessionWatcher?.();
   client.stop();
   server.close(() => process.exit(0));
 }

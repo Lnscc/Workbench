@@ -1,3 +1,4 @@
+import { watch, type FSWatcher } from 'node:fs';
 import { open, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { normalize, resolve, sep } from 'node:path';
@@ -46,6 +47,49 @@ export function parseSessionTail(tail: string, modifiedAt: number, now = Date.no
 export class CodexSessionActivity {
   private readonly sessionsRoot = resolve(homedir(), '.codex', 'sessions');
   private readonly cache = new Map<string, CachedActivity>();
+
+  watch(onStateChange: () => void): () => void {
+    let watcher: FSWatcher;
+    let stopped = false;
+    const timers = new Map<string, NodeJS.Timeout>();
+    const dirtyPaths = new Set<string>();
+    const nextReadAt = new Map<string, number>();
+
+    const scheduleRead = (path: string): void => {
+      if (timers.has(path)) return;
+      const delay = Math.max(100, (nextReadAt.get(path) ?? 0) - Date.now());
+      const timer = setTimeout(async () => {
+        timers.delete(path);
+        dirtyPaths.delete(path);
+        const previous = this.cache.get(path)?.state;
+        const current = await this.read(path);
+        nextReadAt.set(path, Date.now() + 750);
+        if (!stopped && (!previous || previous.working !== current.working || previous.interruption !== current.interruption)) onStateChange();
+        if (!stopped && dirtyPaths.has(path)) scheduleRead(path);
+      }, delay);
+      timers.set(path, timer);
+    };
+
+    try {
+      watcher = watch(this.sessionsRoot, { recursive: true }, (_eventType, filename) => {
+        if (!filename || !filename.toString().toLocaleLowerCase('en-US').endsWith('.jsonl')) return;
+        const path = resolve(this.sessionsRoot, filename.toString());
+        dirtyPaths.add(path);
+        scheduleRead(path);
+      });
+    } catch {
+      return () => undefined;
+    }
+
+    return () => {
+      stopped = true;
+      watcher.close();
+      for (const timer of timers.values()) clearTimeout(timer);
+      timers.clear();
+      dirtyPaths.clear();
+      nextReadAt.clear();
+    };
+  }
 
   async read(sessionPath: unknown): Promise<CodexSessionState> {
     if (typeof sessionPath !== 'string') return { working: false, interruption: null };
