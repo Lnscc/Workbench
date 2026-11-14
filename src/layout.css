@@ -86,6 +86,20 @@ main {
   line-height: 18px;
 }
 
+.interruption-icon {
+  width: 13px;
+  height: 13px;
+  margin-top: 2px;
+  flex: 0 0 auto;
+  display: inline-grid;
+  place-items: center;
+  border: 1.5px solid #c83232;
+  border-radius: 50%;
+  color: #c83232;
+  font: 700 9px/1 monospace;
+  cursor: help;
+}
+
 .column-cards {
   scrollbar-color: #b9b5aa transparent;
   scrollbar-width: thin;
