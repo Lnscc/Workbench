@@ -41,3 +41,26 @@ export type SectionListResult = {
   data: CodexSection[];
   nextCursor: string | null;
 };
+
+export type RateLimitWindow = {
+  usedPercent: number;
+  windowDurationMins: number | null;
+  resetsAt: number | null;
+};
+
+export type RateLimitSnapshot = {
+  limitId: string | null;
+  limitName: string | null;
+  primary: RateLimitWindow | null;
+  secondary: RateLimitWindow | null;
+  credits: { hasCredits: boolean; unlimited: boolean; balance: string | null } | null;
+  planType: string | null;
+  rateLimitReachedType: string | null;
+  spendControlReached: boolean | null;
+};
+
+export type RateLimitsResponse = {
+  ordinaryUsageAllowed: boolean | null;
+  rateLimits: RateLimitSnapshot;
+  rateLimitsByLimitId: Record<string, RateLimitSnapshot | undefined> | null;
+};

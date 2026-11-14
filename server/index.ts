@@ -3,7 +3,7 @@ import { CodexClient } from './codex-client.js';
 import { CodexProjectState } from './codex-project-state.js';
 import { StatusStore } from './status-store.js';
 import { CodexSessionActivity } from './session-activity.js';
-import type { SectionListResult, ThreadListResult, WorkbenchStatus } from './types.js';
+import type { RateLimitsResponse, SectionListResult, ThreadListResult, WorkbenchStatus } from './types.js';
 
 const HOST = '127.0.0.1';
 const PORT = Number(process.env.WORKBENCH_PORT ?? 4100);
@@ -93,6 +93,17 @@ app.get('/api/projects', async (_request, response) => {
   }
 });
 
+app.get('/api/usage', async (_request, response) => {
+  try {
+    const result = await withCodex(() => client.request<RateLimitsResponse>('account/rateLimits/read', {
+      excludeResetCreditDetails: true
+    }));
+    response.json(result);
+  } catch (error) {
+    response.status(502).json({ error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
 app.put('/api/threads/:threadId/status', async (request, response) => {
   const threadId = request.params.threadId?.trim();
   const status = request.body?.status as unknown;
@@ -138,7 +149,8 @@ app.get('/api/events', async (request, response) => {
 client.onNotification((method) => {
   const affectsThreads = method.startsWith('thread/')
     || method.startsWith('threadSection/')
-    || method.startsWith('turn/');
+    || method.startsWith('turn/')
+    || method === 'account/rateLimits/updated';
   if (!affectsThreads) return;
   publishUpdate(method);
 });

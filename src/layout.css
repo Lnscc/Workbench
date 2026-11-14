@@ -29,11 +29,17 @@ main {
   display: flex;
   align-items: center;
   gap: 6px;
+  flex-wrap: nowrap;
+  overflow: hidden;
 }
 
 .project-and-activity .project-chip {
   max-width: none;
   flex: 0 1 auto;
+}
+
+.project-and-activity .live-badge {
+  flex: 0 0 auto;
 }
 
 .card-meta > :last-child {

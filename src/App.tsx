@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { Project, ProjectListResponse, Thread, ThreadListResponse, WorkbenchStatus } from './types';
+import type { Project, ProjectListResponse, RateLimitsResponse, RateLimitWindow, Thread, ThreadListResponse, WorkbenchStatus } from './types';
 
 type LoadState = 'loading' | 'ready' | 'error';
 type ColumnStatus = WorkbenchStatus | 'unsorted';
@@ -15,6 +15,27 @@ function formatDate(timestamp: number) {
 }
 
 function projectName(thread: Thread) { return thread.project?.name ?? NO_PROJECT; }
+
+function usageLabel(window: RateLimitWindow) {
+  if (window.windowDurationMins === 300) return '5 Stunden';
+  if (window.windowDurationMins === 10_080) return '7 Tage';
+  if (window.windowDurationMins) return `${Math.round(window.windowDurationMins / 60)} Stunden`;
+  return 'Nutzung';
+}
+
+function resetLabel(resetsAt: number | null) {
+  if (!resetsAt) return 'Reset unbekannt';
+  return `Reset ${new Intl.DateTimeFormat('de-DE', { weekday: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(resetsAt * 1000))}`;
+}
+
+function UsageMeter({ label, window }: { label: string; window: RateLimitWindow }) {
+  const used = Math.max(0, Math.min(100, window.usedPercent));
+  return <div className="usage-meter" title={`${label}: ${Math.round(used)} % genutzt · ${resetLabel(window.resetsAt)}`}>
+    <div className="usage-copy"><span>{label}</span><strong>{Math.round(used)} %</strong></div>
+    <div className="usage-track"><span style={{ width: `${used}%` }} /></div>
+    <small>{resetLabel(window.resetsAt)}</small>
+  </div>;
+}
 
 type LiveBadge = { label: string; kind: 'active' | 'attention' | 'unread' };
 
@@ -38,8 +59,7 @@ function ThreadCard({ thread, moving }: { thread: Thread; moving: boolean }) {
   return <article className={`thread-card${moving ? ' moving' : ''}`} draggable={!moving} onDragStart={event => {
     event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', thread.id);
   }}>
-    <div className="card-meta"><span className="project-and-activity"><span className="project-chip">{projectName(thread)}</span>{thread.isCodexWorking ? <span className="working-indicator" title="Codex arbeitet in diesem Chat"><span />Codex arbeitet</span> : null}</span><span>{formatDate(thread.updatedAt)}</span></div>
-    {badges.length ? <div className="live-badges">{badges.map(badge => <span className={`live-badge ${badge.kind}`} key={badge.kind}>{badge.label}</span>)}</div> : null}
+    <div className="card-meta"><span className="project-and-activity"><span className="project-chip">{projectName(thread)}</span>{badges.map(badge => <span className={`live-badge ${badge.kind}`} key={badge.label}>{badge.label}</span>)}{thread.isCodexWorking ? <span className="working-indicator" title="Codex arbeitet in diesem Chat"><span />Codex arbeitet</span> : null}</span><span>{formatDate(thread.updatedAt)}</span></div>
     <h3><a href={`codex://threads/${thread.id}`}>{title}</a>{isPinned ? <span className="pin-icon" title="In Codex angepinnt" aria-label="In Codex angepinnt">📌</span> : null}</h3>
     {thread.preview && thread.preview !== title ? <p>{thread.preview}</p> : null}
     {thread.section && !isPinned ? <div className="codex-meta">Codex: {thread.section.name}</div> : null}
@@ -50,6 +70,7 @@ export function App() {
   const [threads, setThreads] = useState<Thread[]>([]); const [loadState, setLoadState] = useState<LoadState>('loading');
   const [error, setError] = useState(''); const [toast, setToast] = useState(''); const [query, setQuery] = useState('');
   const [projects, setProjects] = useState<Project[]>([]);
+  const [usage, setUsage] = useState<RateLimitsResponse | null>(null);
   const [project, setProject] = useState('all'); const [dragOver, setDragOver] = useState<ColumnStatus | null>(null);
   const [showOldDone, setShowOldDone] = useState(false);
   const [movingIds, setMovingIds] = useState<Set<string>>(new Set()); const requestInFlight = useRef(false);
@@ -57,12 +78,13 @@ export function App() {
   const loadThreads = useCallback(async (background = false) => {
     if (requestInFlight.current) return; requestInFlight.current = true; if (!background) setLoadState('loading'); setError('');
     try {
-      const [threadResponse, projectResponse] = await Promise.all([fetch('/api/threads'), fetch('/api/projects')]);
+      const [threadResponse, projectResponse, usageResponse] = await Promise.all([fetch('/api/threads'), fetch('/api/projects'), fetch('/api/usage')]);
       const body = await threadResponse.json() as ThreadListResponse | { error?: string };
       const projectBody = await projectResponse.json() as ProjectListResponse | { error?: string };
+      const usageBody = await usageResponse.json() as RateLimitsResponse | { error?: string };
       if (!threadResponse.ok || !('data' in body)) throw new Error('error' in body ? body.error : 'Chats konnten nicht geladen werden.');
       if (!projectResponse.ok || !('data' in projectBody)) throw new Error('error' in projectBody ? projectBody.error : 'Projekte konnten nicht geladen werden.');
-      setThreads(body.data); setProjects(projectBody.data); setLoadState('ready');
+      setThreads(body.data); setProjects(projectBody.data); if (usageResponse.ok && 'rateLimits' in usageBody) setUsage(usageBody); setLoadState('ready');
     } catch (reason) { if (!background) { setError(reason instanceof Error ? reason.message : String(reason)); setLoadState('error'); } }
     finally { requestInFlight.current = false; }
   }, []);
@@ -111,9 +133,10 @@ export function App() {
     }).length;
   }, [project, threads]);
   const visibleColumns = threads.some(thread => thread.workbenchStatus === null) ? columns : columns.filter(column => column.id !== 'unsorted');
+  const codexUsage = usage?.rateLimitsByLimitId?.codex ?? usage?.rateLimits;
 
   return <div className="app-shell">
-    <header className="topbar"><div className="brand"><div className="brand-mark">W</div><div><strong>Workbench</strong><span>{threads.length} Codex-Chats · Live</span></div></div></header>
+    <header className="topbar"><div className="brand"><div className="brand-mark">W</div><div><strong>Workbench</strong><span>{threads.length} Codex-Chats · Live</span></div></div>{codexUsage ? <div className={`usage-panel${usage?.ordinaryUsageAllowed === false ? ' blocked' : ''}`}><span className="usage-plan">{codexUsage.planType ?? 'Codex'}</span>{codexUsage.primary ? <UsageMeter label={usageLabel(codexUsage.primary)} window={codexUsage.primary} /> : null}{codexUsage.secondary ? <UsageMeter label={usageLabel(codexUsage.secondary)} window={codexUsage.secondary} /> : null}{codexUsage.credits?.hasCredits ? <span className="credit-balance">{codexUsage.credits.unlimited ? 'Credits ∞' : `${codexUsage.credits.balance ?? '–'} Credits`}</span> : null}</div> : null}</header>
     <main>
       <section className="board-tools"><div><h1>Chat Board</h1><p>Status per Drag & Drop verwalten</p></div><div className="filters"><label className="search-field"><span>⌕</span><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Chats durchsuchen" /></label><label className="project-filter"><span>Projekt</span><select value={project} onChange={event => setProject(event.target.value)}><option value="all">Alle Projekte</option>{projects.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}<option value="none">{NO_PROJECT}</option></select></label>{hiddenDoneCount > 0 && !query.trim() ? <button className="old-done-toggle" type="button" aria-pressed={showOldDone} onClick={() => setShowOldDone(current => !current)}>{showOldDone ? 'Ältere Done ausblenden' : `Ältere Done anzeigen (${hiddenDoneCount})`}</button> : null}<span className="result-count">{visibleThreads.length} von {threads.length}</span></div></section>
       {loadState === 'loading' ? <section className="message-state"><div className="spinner" /><h2>Verbinde mit Codex …</h2></section> : loadState === 'error' ? <section className="message-state error-state"><span>!</span><h2>Verbindung fehlgeschlagen</h2><p>{error}</p><button onClick={() => void loadThreads()}>Erneut versuchen</button></section> :
