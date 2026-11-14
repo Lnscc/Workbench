@@ -8,6 +8,8 @@ export type CodexProject = {
   id: string;
   name: string;
   rootPaths: string[];
+  color: string | null;
+  icon: string | null;
 };
 
 export type CodexThread = {

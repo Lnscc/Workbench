@@ -19,7 +19,30 @@ function formatDate(timestamp: number) {
   return new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(timestamp * 1000));
 }
 
-function projectName(thread: Thread) { return thread.project?.name ?? NO_PROJECT; }
+const projectIconGlyphs: Record<string, string> = {
+  function: 'ƒ',
+  'desk-globe': '🌐',
+  wrench: '🔧',
+  code: '</>',
+  folder: '📁',
+  globe: '🌐',
+  terminal: '>_',
+  rocket: '🚀',
+  star: '★'
+};
+
+function projectIcon(project: Project | null) {
+  if (!project?.icon) return null;
+  return projectIconGlyphs[project.icon] ?? project.icon.slice(0, 1).toLocaleUpperCase('de');
+}
+
+function ProjectChip({ project }: { project: Project | null }) {
+  const icon = projectIcon(project);
+  return <span className="project-chip" data-color={project?.color ?? undefined} title={project?.name ?? NO_PROJECT}>
+    {icon ? <span className="project-icon" aria-hidden="true">{icon}</span> : null}
+    <span>{project?.name ?? NO_PROJECT}</span>
+  </span>;
+}
 
 function usageLabel(window: RateLimitWindow) {
   if (window.windowDurationMins === 300) return '5 Stunden';
@@ -81,7 +104,7 @@ function ThreadCard({ thread, moving }: { thread: Thread; moving: boolean }) {
     <article className={`thread-card${moving ? ' moving' : ''}`} draggable={!moving} onDragStart={event => {
       event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', thread.id);
     }}>
-      <div className="card-meta"><span className="project-and-activity"><span className="project-chip">{projectName(thread)}</span>{badges.map(badge => <span className={`live-badge ${badge.kind}`} key={badge.label}>{badge.label}</span>)}{thread.isCodexWorking ? <span className="working-indicator" title="Codex arbeitet in diesem Chat"><span />Codex arbeitet</span> : null}</span><span>{formatDate(thread.updatedAt)}</span></div>
+      <div className="card-meta"><span className="project-and-activity"><ProjectChip project={thread.project} />{badges.map(badge => <span className={`live-badge ${badge.kind}`} key={badge.label}>{badge.label}</span>)}{thread.isCodexWorking ? <span className="working-indicator" title="Codex arbeitet in diesem Chat"><span />Codex arbeitet</span> : null}</span><span>{formatDate(thread.updatedAt)}</span></div>
       <h3><a href={`codex://threads/${thread.id}`}>{title}</a>{usageLimitReached ? <span className="interruption-icon" title="Dieser Chat wurde wegen eines erreichten Nutzungslimits unterbrochen" aria-label="Nutzungslimit erreicht">i</span> : null}{isPinned ? <span className="pin-icon" title="In Codex angepinnt" aria-label="In Codex angepinnt">📌</span> : null}</h3>
       {thread.preview && thread.preview !== title ? <p>{thread.preview}</p> : null}
       {thread.section && !isPinned ? <div className="codex-meta">Codex: {thread.section.name}</div> : null}
@@ -208,7 +231,7 @@ export function App() {
   return <div className="app-shell">
     <header className="topbar"><div className="brand"><div className="brand-mark">W</div><div><strong>Workbench</strong><span>{threads.length} Codex-Chats · Live</span></div></div>{usageSnapshots.length > 0 ? <div className={`usage-panel${usage?.ordinaryUsageAllowed === false ? ' blocked' : ''}`}>{usageSnapshots.map((snapshot, index) => <UsageSummary snapshot={snapshot} key={snapshot.limitId ?? index} />)}</div> : null}</header>
     <main>
-      <section className="board-tools"><div><h1>Chat Board</h1><p>Status per Drag & Drop verwalten</p></div><div className="filters"><label className="search-field"><span>⌕</span><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Chats durchsuchen" /></label><label className="project-filter"><span>Projekt</span><select value={project} onChange={event => setProject(event.target.value)}><option value="all">Alle Projekte</option>{projects.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}<option value="none">{NO_PROJECT}</option></select></label><span className="result-count">{visibleThreads.length} von {threads.length}</span></div></section>
+      <section className="board-tools"><div><h1>Chat Board</h1><p>Status per Drag & Drop verwalten</p></div><div className="filters"><label className="search-field"><span>⌕</span><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Chats durchsuchen" /></label><label className="project-filter"><span>Projekt</span><select value={project} onChange={event => setProject(event.target.value)}><option value="all">Alle Projekte</option>{projects.map(item => <option key={item.id} value={item.id}>{projectIcon(item) ? `${projectIcon(item)}  ` : ''}{item.name}</option>)}<option value="none">{NO_PROJECT}</option></select></label><span className="result-count">{visibleThreads.length} von {threads.length}</span></div></section>
       {loadState === 'loading' ? <section className="message-state"><div className="spinner" /><h2>Verbinde mit Codex …</h2></section> : loadState === 'error' ? <section className="message-state error-state"><span>!</span><h2>Verbindung fehlgeschlagen</h2><p>{error}</p><button onClick={() => void loadThreads()}>Erneut versuchen</button></section> :
         <section className={`board columns-${visibleColumns.length}`} aria-label="Workbench Kanban-Board">{visibleColumns.map(column => { const items = visibleThreads.filter(thread => (thread.workbenchStatus ?? 'unsorted') === column.id); const hiddenCount = hiddenCounts[column.id]; const count = !query.trim() && hiddenCount > 0 ? `${items.length}/${items.length + hiddenCount}` : items.length; return <section className={`board-column column-${column.id}${dragOver === column.id ? ' drag-over' : ''}`} key={column.id} onDragOver={event => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setDragOver(column.id); }} onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setDragOver(null); }} onDrop={event => { event.preventDefault(); setDragOver(null); const id = event.dataTransfer.getData('text/plain'); if (id) void moveThread(id, column.id); }}><header><h2>{column.label}</h2><span>{count}</span></header><div className="column-cards">{items.map(thread => <ThreadCard key={thread.id} thread={thread} moving={movingIds.has(thread.id)} />)}{hiddenCount > 0 && !query.trim() ? <button className="load-more-column" type="button" onClick={() => setColumnLimits(current => ({ ...current, [column.id]: current[column.id] + COLUMN_PAGE_SIZE }))}>Mehr anzeigen <span>({Math.min(COLUMN_PAGE_SIZE, hiddenCount)} von {hiddenCount})</span></button> : null}{items.length === 0 ? <div className="empty-column">Chat hierher ziehen</div> : null}</div></section>; })}</section>}
     </main>{toast ? <div className="toast" role="alert">{toast}</div> : null}

@@ -5,10 +5,12 @@ import type { CodexProject } from './types.js';
 
 type ProjectReference = { projectKind?: unknown; projectId?: unknown };
 type RawProject = { id?: unknown; name?: unknown; rootPaths?: unknown };
+type RawProjectAppearance = { color?: unknown; marker?: { icon?: unknown } | null };
 type RawState = {
   'electron-thread-read-state-v1'?: unknown;
   'local-projects'?: Record<string, RawProject>;
   'project-order'?: unknown;
+  'project-appearances'?: Record<string, RawProjectAppearance>;
   'thread-project-assignments'?: Record<string, ProjectReference>;
 };
 
@@ -67,7 +69,14 @@ export class CodexProjectState {
       const id = typeof raw.id === 'string' ? raw.id : fallbackId;
       if (typeof raw.name !== 'string' || !Array.isArray(raw.rootPaths)) continue;
       const rootPaths = raw.rootPaths.filter((path): path is string => typeof path === 'string');
-      projectsById.set(id, { id, name: raw.name, rootPaths });
+      const appearance = state['project-appearances']?.[id];
+      projectsById.set(id, {
+        id,
+        name: raw.name,
+        rootPaths,
+        color: typeof appearance?.color === 'string' ? appearance.color : null,
+        icon: typeof appearance?.marker?.icon === 'string' ? appearance.marker.icon : null
+      });
     }
 
     const order = Array.isArray(state['project-order']) ? state['project-order'].filter((id): id is string => typeof id === 'string') : [];

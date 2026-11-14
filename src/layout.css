@@ -50,6 +50,38 @@ main {
   flex: 0 1 auto;
 }
 
+.project-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid transparent;
+}
+
+.project-chip > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.project-icon {
+  min-width: 12px;
+  height: 12px;
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  font: 700 9px/1 monospace;
+}
+
+.project-chip[data-color="blue"] { background: #e1ecff; border-color: #c7d9f6; color: #285b9b; }
+.project-chip[data-color="green"] { background: #e5f3dc; border-color: #cbe3ba; color: #3f6c2a; }
+.project-chip[data-color="red"] { background: #fbe3df; border-color: #f0c6bf; color: #9a3f35; }
+.project-chip[data-color="orange"] { background: #faead3; border-color: #efd4ae; color: #8a581a; }
+.project-chip[data-color="yellow"] { background: #f6efc9; border-color: #e8dda2; color: #766114; }
+.project-chip[data-color="purple"] { background: #ece5fa; border-color: #d9ccf1; color: #62469a; }
+.project-chip[data-color="pink"] { background: #f8e2ef; border-color: #ebc8dc; color: #91466f; }
+.project-chip[data-color="gray"],
+.project-chip[data-color="grey"] { background: #e9e8e4; border-color: #d7d5ce; color: #5e605b; }
+
 .project-and-activity .live-badge {
   flex: 0 0 auto;
 }
