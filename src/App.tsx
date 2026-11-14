@@ -76,18 +76,19 @@ function ThreadCard({ thread, moving }: { thread: Thread; moving: boolean }) {
   const badges = liveBadges(thread);
   const isPinned = thread.section?.name.toLocaleLowerCase('en-US') === 'pinned';
   const usageLimitReached = thread.codexInterruption === 'usage_limit';
-  return <article className={`thread-card${moving ? ' moving' : ''}`} draggable={!moving} onDragStart={event => {
-    event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', thread.id);
-  }}>
-    <div className="card-meta"><span className="project-and-activity"><span className="project-chip">{projectName(thread)}</span>{badges.map(badge => <span className={`live-badge ${badge.kind}`} key={badge.label}>{badge.label}</span>)}{thread.isCodexWorking ? <span className="working-indicator" title="Codex arbeitet in diesem Chat"><span />Codex arbeitet</span> : null}</span><span>{formatDate(thread.updatedAt)}</span></div>
-    <h3><a href={`codex://threads/${thread.id}`}>{title}</a>{usageLimitReached ? <span className="interruption-icon" title="Dieser Chat wurde wegen eines erreichten Nutzungslimits unterbrochen" aria-label="Nutzungslimit erreicht">i</span> : null}{isPinned ? <span className="pin-icon" title="In Codex angepinnt" aria-label="In Codex angepinnt">📌</span> : null}</h3>
-    {thread.preview && thread.preview !== title ? <p>{thread.preview}</p> : null}
-    {thread.section && !isPinned ? <div className="codex-meta">Codex: {thread.section.name}</div> : null}
-    {thread.children.length > 0 ? <details className="agent-tasks" onClick={event => event.stopPropagation()}>
-      <summary>{thread.children.length} {thread.children.length === 1 ? 'Agenten-Task' : 'Agenten-Tasks'}</summary>
+  return <div className="thread-card-group">
+    <article className={`thread-card${moving ? ' moving' : ''}`} draggable={!moving} onDragStart={event => {
+      event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', thread.id);
+    }}>
+      <div className="card-meta"><span className="project-and-activity"><span className="project-chip">{projectName(thread)}</span>{badges.map(badge => <span className={`live-badge ${badge.kind}`} key={badge.label}>{badge.label}</span>)}{thread.isCodexWorking ? <span className="working-indicator" title="Codex arbeitet in diesem Chat"><span />Codex arbeitet</span> : null}</span><span>{formatDate(thread.updatedAt)}</span></div>
+      <h3><a href={`codex://threads/${thread.id}`}>{title}</a>{usageLimitReached ? <span className="interruption-icon" title="Dieser Chat wurde wegen eines erreichten Nutzungslimits unterbrochen" aria-label="Nutzungslimit erreicht">i</span> : null}{isPinned ? <span className="pin-icon" title="In Codex angepinnt" aria-label="In Codex angepinnt">📌</span> : null}</h3>
+      {thread.preview && thread.preview !== title ? <p>{thread.preview}</p> : null}
+      {thread.section && !isPinned ? <div className="codex-meta">Codex: {thread.section.name}</div> : null}
+    </article>
+    {thread.children.length > 0 ? <div className="agent-tasks" onClick={event => event.stopPropagation()}>
       <div className="agent-task-list">{thread.children.map(child => <AgentTask thread={child} key={child.id} />)}</div>
-    </details> : null}
-  </article>;
+    </div> : null}
+  </div>;
 }
 
 function AgentTask({ thread }: { thread: Thread }) {
