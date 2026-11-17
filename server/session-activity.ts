@@ -11,7 +11,7 @@ type CachedActivity = { size: number; modifiedAt: number; state: CodexSessionSta
 export function parseSessionTail(tail: string, modifiedAt: number, now = Date.now()): CodexSessionState {
   const lines = tail.split(/\r?\n/);
   let lastStart = -1;
-  let lastComplete = -1;
+  let lastEnd = -1;
   let interruption: CodexSessionState['interruption'] = null;
   for (let index = 0; index < lines.length; index += 1) {
     try {
@@ -29,7 +29,7 @@ export function parseSessionTail(tail: string, modifiedAt: number, now = Date.no
         lastStart = index;
         interruption = null;
       }
-      if (event.type === 'event_msg' && event.payload?.type === 'task_complete') lastComplete = index;
+      if (event.type === 'event_msg' && (event.payload?.type === 'task_complete' || event.payload?.type === 'turn_aborted')) lastEnd = index;
       if (event.type === 'event_msg') {
         const limits = event.payload?.info?.rate_limits ?? event.payload?.rate_limits;
         const explicitLimit = limits?.rate_limit_reached_type != null || Boolean(limits?.spend_control_reached);
@@ -40,7 +40,7 @@ export function parseSessionTail(tail: string, modifiedAt: number, now = Date.no
       // The first or a very large line can be partial when only the file tail is read.
     }
   }
-  const working = interruption === null && (lastStart > lastComplete || (lastStart === -1 && lastComplete === -1 && now - modifiedAt < 60_000));
+  const working = interruption === null && (lastStart > lastEnd || (lastStart === -1 && lastEnd === -1 && now - modifiedAt < 60_000));
   return { working, interruption };
 }
 
